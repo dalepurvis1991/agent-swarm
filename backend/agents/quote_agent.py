@@ -15,6 +15,7 @@ from backend.suppliers import find_suppliers, SupplierSearchError
 from backend.suppliers.serp import find_suppliers_async
 from backend.email.outgoing import send_rfq, EmailSendError
 from backend.email.parser import extract_offer
+from backend.app.offers import OfferManager
 
 logger = logging.getLogger(__name__)
 
@@ -40,27 +41,15 @@ def get_db_connection():
     return psycopg.connect(DB_DSN)
 
 
-def store_offer(offer_data: Dict[str, Any], supplier_info: Dict[str, str], spec: str) -> None:
-    """Store extracted offer in the database."""
+async def store_offer(offer_data: Dict[str, Any], supplier_info: Dict[str, str], spec: str) -> Optional[int]:
+    """Store extracted offer in the database using OfferManager."""
     try:
-        with get_db_connection() as conn:
-            conn.execute("""
-                INSERT INTO supplier_offers 
-                (supplier_name, supplier_email, spec, price, currency, lead_time, lead_time_unit, email_body)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (
-                supplier_info.get("name", "Unknown"),
-                offer_data.get("from_email", supplier_info.get("url", "")),
-                spec,
-                offer_data.get("price"),
-                offer_data.get("currency"),
-                offer_data.get("lead_time"),
-                offer_data.get("lead_time_unit"),
-                offer_data.get("email_body", "")
-            ))
-            logger.info(f"Stored offer from {supplier_info.get('name')} for spec: {spec}")
+        offer_id = await OfferManager.store_offer(offer_data, supplier_info, spec)
+        logger.info(f"Stored offer {offer_id} from {supplier_info.get('name')} for spec: {spec}")
+        return offer_id
     except Exception as e:
         logger.error(f"Failed to store offer: {e}")
+        return None
 
 
 async def _poll_inbox(spec: str, suppliers: List[Dict[str, str]], max_duration: int = 300) -> List[Dict[str, Any]]:

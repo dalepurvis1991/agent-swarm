@@ -283,7 +283,7 @@ class TestDatabaseIntegration:
         pass
     
     @pytest.mark.skip(reason="Requires database - enable for integration testing")
-    def test_store_offer_database(self):
+    async def test_store_offer_database(self):
         """Test actual database storage of offers."""
         # This test requires a running database
         # Enable for integration testing with real database
@@ -303,4 +303,5 @@ class TestDatabaseIntegration:
         }
         
         # Should not raise exception
-        store_offer(offer_data, supplier_info, "test product") 
+        offer_id = await store_offer(offer_data, supplier_info, "test product")
+        assert offer_id is not None 

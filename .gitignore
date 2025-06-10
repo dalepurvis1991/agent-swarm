@@ -148,4 +148,11 @@ Thumbs.db
 poetry.lock
 
 # Docker
-docker-compose.override.yml 
+docker-compose.override.yml
+
+# Development artifacts
+*.patch
+*.diff
+debug_*.py
+temp_*.py
+scratch_* 

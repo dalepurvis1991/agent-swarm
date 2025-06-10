@@ -1,0 +1,62 @@
+{
+  "search_metadata": {
+    "id": "mock-search-id",
+    "status": "Success",
+    "json_endpoint": "https://serpapi.com/searches/mock.json",
+    "created_at": "2025-01-06 12:00:00 UTC",
+    "processed_at": "2025-01-06 12:00:01 UTC",
+    "google_url": "https://www.google.com/search?q=eco+tote+bags+suppliers+wholesale",
+    "raw_html_file": "https://serpapi.com/searches/mock.html",
+    "total_time_taken": 1.23
+  },
+  "search_parameters": {
+    "engine": "google",
+    "q": "eco tote bags suppliers wholesale",
+    "google_domain": "google.com",
+    "gl": "us",
+    "hl": "en",
+    "num": "5"
+  },
+  "organic_results": [
+    {
+      "position": 1,
+      "title": "EcoPackaging Co - Wholesale Tote Bags",
+      "link": "https://www.ecopackaging.com/tote-bags",
+      "displayed_link": "https://www.ecopackaging.com › tote-bags",
+      "snippet": "Wholesale eco-friendly tote bags made from sustainable materials. Bulk orders available. Custom printing options for your brand.",
+      "snippet_highlighted_words": ["tote bags", "eco"],
+      "cached_page_link": "https://webcache.googleusercontent.com/search?q=cache:mock1",
+      "related_pages_link": "https://www.google.com/search?q=related:mock1"
+    },
+    {
+      "position": 2,
+      "title": "Green Supply Solutions - Bulk Eco Bags",
+      "link": "https://www.greensupply.com/bags",
+      "displayed_link": "https://www.greensupply.com › bags",
+      "snippet": "Premium eco-friendly bags for retailers and businesses. Minimum order 500 units. Fast shipping worldwide.",
+      "snippet_highlighted_words": ["eco", "bags"],
+      "cached_page_link": "https://webcache.googleusercontent.com/search?q=cache:mock2",
+      "related_pages_link": "https://www.google.com/search?q=related:mock2"
+    },
+    {
+      "position": 3,
+      "title": "Sustainable Packaging Direct | Tote Bag Wholesale",
+      "link": "https://www.sustainablepackaging.com/totes",
+      "displayed_link": "https://www.sustainablepackaging.com › totes",
+      "snippet": "Direct from manufacturer pricing on eco tote bags. Organic cotton, recycled materials. Custom branding available.",
+      "snippet_highlighted_words": ["tote", "eco"],
+      "cached_page_link": "https://webcache.googleusercontent.com/search?q=cache:mock3",
+      "related_pages_link": "https://www.google.com/search?q=related:mock3"
+    }
+  ],
+  "related_searches": [
+    {
+      "query": "organic cotton tote bags wholesale",
+      "link": "https://www.google.com/search?q=organic+cotton+tote+bags+wholesale"
+    },
+    {
+      "query": "recycled tote bags suppliers",
+      "link": "https://www.google.com/search?q=recycled+tote+bags+suppliers"
+    }
+  ]
+} 

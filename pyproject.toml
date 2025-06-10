@@ -14,13 +14,20 @@ email-validator = "^2.0.0"
 psycopg = {extras = ["binary"], version = "^3.1.0"}
 pgvector = "^0.2.0"
 numpy = "^1.26.0"
+beautifulsoup4 = "^4.12.0"
+anyio = "^4.0.0"
+imapclient = "^3.0.0"
+aiosmtplib = "^3.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
 httpx = "^0.27.0"
+respx = "^0.20.0"
+pytest-asyncio = "^0.23.0"
 
 [tool.pytest.ini_options]
 addopts = "-q"
+asyncio_mode = "auto"
 
 [build-system]
 requires = ["poetry-core"]

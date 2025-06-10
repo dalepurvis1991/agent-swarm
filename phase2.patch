@@ -1,0 +1,791 @@
+commit 8ca25b0be3df13c94f887297f44a4e4805da24fa
+Author: dalepurvis1991 <dalepurvis@floorgiants.co.uk>
+Date:   Tue Jun 10 12:24:55 2025 +0100
+
+    feat: Initial implementation of email processing backend with vector search capabilities
+
+diff --git a/.cursor/rules/cursorrules.mdc b/.cursor/rules/cursorrules.mdc
+new file mode 100644
+index 0000000..265886c
+--- /dev/null
++++ b/.cursor/rules/cursorrules.mdc
+@@ -0,0 +1,22 @@
++---
++description: 
++globs: 
++alwaysApply: false
++---
++# Cursor AI – Project Guardrails
++1. 🌱 **Small diffs only**  
++   – Touch only files named in the user story. Do *not* refactor unrelated code.
++2. ✅ **Red/green/refactor**  
++   – If tests fail, FIRST add or update a failing test, THEN fix code until green.
++3. 🤔 **Ask when unsure**  
++   – If requirements or inputs are ambiguous, output “QUESTION:” followed by the clarification you need.
++4. 🔄 **Two-strike loop guard**  
++   – If the same fix is attempted twice and tests still fail, STOP and ask for guidance.
++5. 🔒 **No secrets in code**  
++   – Never commit real API keys or tokens. Use environment variables only.
++6. 📝 **Explain migrations**  
++   – When database schema changes, include a `migrations/####_description.sql` and update docs.
++7. 📚 **Keep docs in sync**  
++   – Update `README` or relevant `.md` files whenever behaviour or public API changes.
++8. 🚦 **Exit criteria**  
++   – Finish when all tests pass **and** the PR description matches implemented behaviour.
+\ No newline at end of file
+diff --git a/.env.example b/.env.example
+new file mode 100644
+index 0000000..a75bed9
+--- /dev/null
++++ b/.env.example
+@@ -0,0 +1,3 @@
++﻿# SMTP Configuration (for future use)
++SMTP_HOST=
++SMTP_PORT=
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..e978718
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,151 @@
++# Byte-compiled / optimized / DLL files
++__pycache__/
++*.py[cod]
++*$py.class
++
++# C extensions
++*.so
++
++# Distribution / packaging
++.Python
++build/
++develop-eggs/
++dist/
++downloads/
++eggs/
++.eggs/
++lib/
++lib64/
++parts/
++sdist/
++var/
++wheels/
++pip-wheel-metadata/
++share/python-wheels/
++*.egg-info/
++.installed.cfg
++*.egg
++MANIFEST
++
++# PyInstaller
++#  Usually these files are written by a python script from a template
++#  before PyInstaller builds the exe, so as to inject date/other infos into it.
++*.manifest
++*.spec
++
++# Installer logs
++pip-log.txt
++pip-delete-this-directory.txt
++
++# Unit test / coverage reports
++htmlcov/
++.tox/
++.nox/
++.coverage
++.coverage.*
++.cache
++nosetests.xml
++coverage.xml
++*.cover
++*.py,cover
++.hypothesis/
++.pytest_cache/
++
++# Translations
++*.mo
++*.pot
++
++# Django stuff:
++*.log
++local_settings.py
++db.sqlite3
++db.sqlite3-journal
++
++# Flask stuff:
++instance/
++.webassets-cache
++
++# Scrapy stuff:
++.scrapy
++
++# Sphinx documentation
++docs/_build/
++
++# PyBuilder
++target/
++
++# Jupyter Notebook
++.ipynb_checkpoints
++
++# IPython
++profile_default/
++ipython_config.py
++
++# pyenv
++.python-version
++
++# pipenv
++#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
++#   However, in case of collaboration, if having platform-specific dependencies or dependencies
++#   having no cross-platform support, pipenv may install dependencies that don't work, or not
++#   install all needed dependencies.
++#Pipfile.lock
++
++# PEP 582; used by e.g. github.com/David-OConnor/pyflow
++__pypackages__/
++
++# Celery stuff
++celerybeat-schedule
++celerybeat.pid
++
++# SageMath parsed files
++*.sage.py
++
++# Environments
++.env
++.venv
++env/
++venv/
++ENV/
++env.bak/
++venv.bak/
++
++# Spyder project settings
++.spyderproject
++.spyproject
++
++# Rope project settings
++.ropeproject
++
++# mkdocs documentation
++/site
++
++# mypy
++.mypy_cache/
++.dmypy.json
++dmypy.json
++
++# Pyre type checker
++.pyre/
++
++# IDEs
++.vscode/
++.idea/
++*.swp
++*.swo
++*~
++
++# OS
++.DS_Store
++.DS_Store?
++._*
++.Spotlight-V100
++.Trashes
++ehthumbs.db
++Thumbs.db
++
++# Poetry
++poetry.lock
++
++# Docker
++docker-compose.override.yml 
+\ No newline at end of file
+diff --git a/README.md b/README.md
+new file mode 100644
+index 0000000..2601fc6
+--- /dev/null
++++ b/README.md
+@@ -0,0 +1,108 @@
++# Agent Swarm - Email Processing Backend
++
++A FastAPI-based email processing service with validation and logging.
++
++## Prerequisites
++
++* Python 3.11+
++* Poetry (`pip install poetry`)
++
++## Quickstart
++
++```bash
++# 1. Copy environment template
++cp .env.example .env
++
++# 2. Install dependencies
++poetry install
++
++# 3. Install package in development mode (for imports)
++poetry install -e .
++
++# 4. Run the development server
++poetry run uvicorn backend.app.main:app --reload
++
++# 5. Run tests
++poetry run pytest
++```
++
++## API Endpoints
++
++### POST /incoming-email
++
++Processes incoming email data with validation.
++
++**Request Body:**
++```json
++{
++    "subject": "Test message",
++    "from": "alice@example.com", 
++    "body": "Hello world"
++}
++```
++
++**Response:**
++```json
++{
++    "received": true
++}
++```
++
++**Error Responses:**
++- `400` - Invalid JSON
++- `422` - Validation error (missing fields, invalid email format, etc.)
++
++## Testing
++
++The test suite includes:
++- Happy path testing
++- JSON parsing error handling
++- Field validation testing
++- Email format validation
++
++Run with: `poetry run pytest`
++
++## Development
++
++Server runs on `http://localhost:8000` by default.
++API documentation available at `http://localhost:8000/docs` (FastAPI auto-generated).
++
++## Vector Database
++
++The application uses PostgreSQL with pgvector for storing and searching email content.
++
++### Database Setup
++
++```bash
++# Start the database
++docker compose up -d db
++
++# Check database health
++docker compose ps
++```
++
++### Environment Variables
++
++Set `DATABASE_URL` if using a different database:
++```bash
++# In .env file
++DATABASE_URL=postgresql://dev:dev@localhost:5432/email_processing
++```
++
++### Search CLI Tool
++
++Search for similar emails using the CLI tool:
++
++```bash
++# Search for emails similar to a query
++poetry run python tools/search.py "product recommendations"
++
++# Example output:
++# Search results for: 'product recommendations'
++# --------------------------------------------------
++# Similarity: 0.850
++# Content: Check out our new product line...
++# ------------------------------
++```
++
++The vector store automatically indexes email body content when emails are received via the `/incoming-email` endpoint. 
+\ No newline at end of file
+diff --git a/backend/__init__.py b/backend/__init__.py
+new file mode 100644
+index 0000000..02102ae
+--- /dev/null
++++ b/backend/__init__.py
+@@ -0,0 +1 @@
++# Backend package 
+\ No newline at end of file
+diff --git a/backend/app/__init__.py b/backend/app/__init__.py
+new file mode 100644
+index 0000000..a0077b8
+--- /dev/null
++++ b/backend/app/__init__.py
+@@ -0,0 +1 @@
++# App package 
+\ No newline at end of file
+diff --git a/backend/app/db.py b/backend/app/db.py
+new file mode 100644
+index 0000000..bcb1b6b
+--- /dev/null
++++ b/backend/app/db.py
+@@ -0,0 +1,47 @@
++import os
++import contextlib
++from typing import List, Tuple
++import psycopg
++from pgvector.psycopg import register_vector
++from .embeddings import embed
++
++DB_DSN = os.getenv("DATABASE_URL", "postgresql://dev:dev@localhost:5432/email_processing")
++
++
++@contextlib.contextmanager
++def get_connection():
++    """Get database connection with pgvector support."""
++    try:
++        with psycopg.connect(DB_DSN) as conn:
++            register_vector(conn)
++            yield conn
++    except psycopg.Error as e:
++        raise ConnectionError(f"Database connection failed: {e}")
++
++
++def add_doc(content: str) -> None:
++    """Add document to vector store."""
++    vec = embed(content)
++    with get_connection() as conn:
++        conn.execute(
++            "INSERT INTO documents (content, embedding) VALUES (%s, %s)",
++            (content, vec)
++        )
++
++
++def query_similar(text: str, k: int = 3) -> List[Tuple[str, float]]:
++    """Query for similar documents using cosine similarity."""
++    vec = embed(text)
++    with get_connection() as conn:
++        rows = conn.execute(
++            "SELECT content, 1 - (embedding <=> %s) AS similarity "
++            "FROM documents ORDER BY embedding <=> %s LIMIT %s",
++            (vec, vec, k)
++        ).fetchall()
++    return rows
++
++
++def init_db() -> None:
++    """Initialize database connection (test connectivity)."""
++    with get_connection():
++        pass  # Just test that we can connect 
+\ No newline at end of file
+diff --git a/backend/app/embeddings.py b/backend/app/embeddings.py
+new file mode 100644
+index 0000000..83624f1
+--- /dev/null
++++ b/backend/app/embeddings.py
+@@ -0,0 +1,21 @@
++import hashlib
++import struct
++
++DIM = 384  # Smaller, more reasonable size
++
++
++def embed(text: str) -> list[float]:
++    """Simple hash-based embedding for testing purposes.
++    
++    Creates a deterministic embedding without requiring external APIs.
++    Uses multiple hash rounds for better distribution.
++    """
++    embeddings = []
++    for i in range(DIM // 8):
++        # Use text + index to get different hashes for each segment
++        h = hashlib.sha256(f"{text}:{i}".encode()).digest()
++        for j in range(8):
++            val = struct.unpack(">I", h[j*4:(j+1)*4])[0]
++            # Normalize to [-1,1] range
++            embeddings.append((val / 2**32) * 2 - 1)
++    return embeddings 
+\ No newline at end of file
+diff --git a/backend/app/main.py b/backend/app/main.py
+new file mode 100644
+index 0000000..3e0474d
+--- /dev/null
++++ b/backend/app/main.py
+@@ -0,0 +1,46 @@
++import json
++import logging
++from contextlib import asynccontextmanager
++from fastapi import FastAPI, Request, status, HTTPException
++from pydantic import ValidationError
++from backend.app.models import EmailPayload
++from backend.app.db import add_doc, init_db
++
++logging.basicConfig(level=logging.INFO)
++
++
++@asynccontextmanager
++async def lifespan(app: FastAPI):
++    # Startup
++    try:
++        init_db()
++        logging.info("Database connection OK")
++    except Exception as e:
++        logging.error(f"Database startup failed: {e}")
++        raise
++    yield
++    # Shutdown (if needed)
++
++
++app = FastAPI(lifespan=lifespan)
++
++
++@app.post("/incoming-email", status_code=status.HTTP_200_OK)
++async def incoming_email(req: Request):
++    try:
++        payload_dict = await req.json()
++    except json.JSONDecodeError as exc:
++        raise HTTPException(status_code=400, detail="Invalid JSON") from exc
++    
++    try:
++        payload = EmailPayload(**payload_dict)
++    except ValidationError as exc:
++        raise HTTPException(status_code=422, detail="Validation error") from exc
++
++    try:
++        add_doc(payload.body)
++        logging.info("EMAIL STORED: %s", payload.model_dump())
++        return {"received": True}
++    except ConnectionError as e:
++        logging.error("Database error: %s", e)
++        raise HTTPException(status_code=503, detail="Database unavailable") 
+\ No newline at end of file
+diff --git a/backend/app/models.py b/backend/app/models.py
+new file mode 100644
+index 0000000..522cffa
+--- /dev/null
++++ b/backend/app/models.py
+@@ -0,0 +1,7 @@
++from pydantic import BaseModel, Field, EmailStr
++
++
++class EmailPayload(BaseModel):
++    subject: str = Field(..., min_length=1)
++    from_: EmailStr = Field(..., alias="from")
++    body: str = Field(..., min_length=1) 
+\ No newline at end of file
+diff --git a/docker-compose.yml b/docker-compose.yml
+new file mode 100644
+index 0000000..ad02922
+--- /dev/null
++++ b/docker-compose.yml
+@@ -0,0 +1,17 @@
++version: "3.9"
++services:
++  db:
++    image: pgvector/pgvector:pg16
++    environment:
++      POSTGRES_USER: dev
++      POSTGRES_PASSWORD: dev
++      POSTGRES_DB: email_processing
++    ports:
++      - "5432:5432"
++    volumes:
++      - "./migrations:/docker-entrypoint-initdb.d"
++    healthcheck:
++      test: ["CMD-SHELL", "pg_isready -U dev"]
++      interval: 5s
++      timeout: 5s
++      retries: 5 
+\ No newline at end of file
+diff --git a/migrations/001_init.sql b/migrations/001_init.sql
+new file mode 100644
+index 0000000..21c5278
+--- /dev/null
++++ b/migrations/001_init.sql
+@@ -0,0 +1,12 @@
++-- Initialize pgvector extension and create documents table
++CREATE EXTENSION IF NOT EXISTS vector;
++
++CREATE TABLE IF NOT EXISTS documents (
++  id SERIAL PRIMARY KEY,
++  content TEXT NOT NULL,
++  embedding vector(384) NOT NULL,
++  created_at TIMESTAMP DEFAULT NOW()
++);
++
++CREATE INDEX IF NOT EXISTS documents_embedding_idx 
++ON documents USING ivfflat (embedding vector_cosine_ops); 
+\ No newline at end of file
+diff --git a/pyproject.toml b/pyproject.toml
+new file mode 100644
+index 0000000..a2cfcfa
+--- /dev/null
++++ b/pyproject.toml
+@@ -0,0 +1,27 @@
++[tool.poetry]
++name = "agent-swarm"
++version = "0.1.0"
++description = "Email processing backend"
++authors = ["Your Name <you@example.com>"]
++packages = [{include = "backend"}]
++
++[tool.poetry.dependencies]
++python = "^3.11"
++fastapi = "^0.111.0"
++uvicorn = {extras = ["standard"], version = "^0.30.0"}
++pydantic = "^2.6.0"
++email-validator = "^2.0.0"
++psycopg = {extras = ["binary"], version = "^3.1.0"}
++pgvector = "^0.2.0"
++numpy = "^1.26.0"
++
++[tool.poetry.group.dev.dependencies]
++pytest = "^8.0.0"
++httpx = "^0.27.0"
++
++[tool.pytest.ini_options]
++addopts = "-q"
++
++[build-system]
++requires = ["poetry-core"]
++build-backend = "poetry.core.masonry.api" 
+\ No newline at end of file
+diff --git a/tests/test_db.py b/tests/test_db.py
+new file mode 100644
+index 0000000..1c36f6e
+--- /dev/null
++++ b/tests/test_db.py
+@@ -0,0 +1,104 @@
++import pytest
++from unittest.mock import Mock, patch
++import psycopg
++import backend.app.db as db
++
++
++class MockConnection:
++    """Mock database connection for testing."""
++    
++    def __init__(self):
++        self.store = []
++        
++    def __enter__(self):
++        return self
++        
++    def __exit__(self, *args):
++        pass
++        
++    def execute(self, query, params=None):
++        """Mock execute that simulates basic INSERT/SELECT operations."""
++        if "INSERT" in query:
++            # Store the content (first parameter)
++            content = params[0] if params else ""
++            self.store.append(content)
++            return Mock()
++        elif "SELECT" in query:
++            # Return mock results with fake similarity scores
++            return Mock(fetchall=lambda: [
++                (content, 0.8) for content in self.store[:3]
++            ])
++        return Mock()
++
++
++@pytest.fixture
++def mock_db():
++    """Fixture that provides a mocked database connection."""
++    mock_conn = MockConnection()
++    with patch('backend.app.db.get_connection') as mock_get_conn:
++        mock_get_conn.return_value.__enter__ = lambda self: mock_conn
++        mock_get_conn.return_value.__exit__ = lambda self, *args: None
++        yield mock_conn
++
++
++def test_add_doc(mock_db):
++    """Test adding a document to the store."""
++    db.add_doc("hello world email")
++    assert "hello world email" in mock_db.store
++
++
++def test_query_similar(mock_db):
++    """Test querying for similar documents."""
++    # Add some test documents
++    db.add_doc("hello world email")
++    db.add_doc("eco friendly tote bags")
++    
++    # Query for similar documents
++    results = db.query_similar("tote bags")
++    
++    # Should return results
++    assert len(results) >= 1
++    # Results should be tuples of (content, similarity)
++    assert all(isinstance(r, tuple) and len(r) == 2 for r in results)
++
++
++def test_add_and_query_workflow(mock_db):
++    """Test the complete workflow of adding and querying documents."""
++    # Add several documents
++    docs = [
++        "hello world email",
++        "eco friendly tote bags",
++        "product recommendations"
++    ]
++    
++    for doc in docs:
++        db.add_doc(doc)
++    
++    # Query should return results
++    results = db.query_similar("products")
++    assert len(results) <= 3  # Limited by k=3 default
++    
++    # Check that we get content and similarity scores
++    for content, similarity in results:
++        assert isinstance(content, str)
++        assert isinstance(similarity, (int, float))
++
++
++def test_init_db_success():
++    """Test successful database initialization."""
++    with patch('backend.app.db.get_connection') as mock_conn:
++        mock_conn.return_value.__enter__ = Mock()
++        mock_conn.return_value.__exit__ = Mock()
++        
++        # Should not raise any exception
++        db.init_db()
++
++
++def test_connection_error():
++    """Test handling of database connection errors."""
++    with patch('backend.app.db.psycopg.connect') as mock_connect:
++        # Simulate a psycopg error (which gets wrapped as ConnectionError)
++        mock_connect.side_effect = psycopg.Error("Connection failed")
++        
++        with pytest.raises(ConnectionError):
++            db.add_doc("test content") 
+\ No newline at end of file
+diff --git a/tests/test_incoming_email.py b/tests/test_incoming_email.py
+new file mode 100644
+index 0000000..7535578
+--- /dev/null
++++ b/tests/test_incoming_email.py
+@@ -0,0 +1,77 @@
++import pytest
++from unittest.mock import patch
++from fastapi.testclient import TestClient
++from backend.app.main import app
++
++client = TestClient(app)
++
++
++def test_happy_path():
++    """Test successful email processing"""
++    with patch('backend.app.main.add_doc') as mock_add_doc:
++        resp = client.post(
++            "/incoming-email",
++            json={"subject": "Test", "from": "alice@example.com", "body": "Hello"}
++        )
++        assert resp.status_code == 200
++        assert resp.json() == {"received": True}
++        # Verify the email body was stored
++        mock_add_doc.assert_called_once_with("Hello")
++
++
++def test_invalid_json():
++    """Test malformed JSON handling"""
++    resp = client.post(
++        "/incoming-email",
++        data='{"incomplete": }',
++        headers={"Content-Type": "application/json"}
++    )
++    assert resp.status_code == 400
++
++
++def test_missing_required_fields():
++    """Test validation errors for missing fields"""
++    resp = client.post(
++        "/incoming-email",
++        json={"subject": "Test"}  # missing 'from' and 'body'
++    )
++    assert resp.status_code == 422
++
++
++def test_invalid_email():
++    """Test validation errors for invalid email format"""
++    resp = client.post(
++        "/incoming-email",
++        json={
++            "subject": "Test",
++            "from": "not-an-email",
++            "body": "Hello"
++        }
++    )
++    assert resp.status_code == 422
++
++
++def test_empty_subject():
++    """Test validation errors for empty subject"""
++    resp = client.post(
++        "/incoming-email",
++        json={
++            "subject": "",
++            "from": "alice@example.com",
++            "body": "Hello"
++        }
++    )
++    assert resp.status_code == 422
++
++
++def test_database_error():
++    """Test handling of database connection errors during email processing"""
++    with patch('backend.app.main.add_doc') as mock_add_doc:
++        mock_add_doc.side_effect = ConnectionError("Database unavailable")
++        
++        resp = client.post(
++            "/incoming-email",
++            json={"subject": "Test", "from": "alice@example.com", "body": "Hello"}
++        )
++        assert resp.status_code == 503
++        assert "Database unavailable" in resp.json()["detail"] 
+\ No newline at end of file
+diff --git a/tools/search.py b/tools/search.py
+new file mode 100644
+index 0000000..0ddca00
+--- /dev/null
++++ b/tools/search.py
+@@ -0,0 +1,30 @@
++#!/usr/bin/env python
++"""CLI tool for searching similar documents in the vector store."""
++
++import sys
++import pprint
++from backend.app.db import query_similar
++
++
++def main():
++    if len(sys.argv) < 2:  # pragma: no cover
++        print("Usage: python tools/search.py \"text to search\"")
++        print("Example: python tools/search.py \"product recommendations\"")
++        sys.exit(1)
++    
++    query_text = sys.argv[1]
++    try:
++        results = query_similar(query_text)
++        print(f"Search results for: '{query_text}'")
++        print("-" * 50)
++        for content, similarity in results:
++            print(f"Similarity: {similarity:.3f}")
++            print(f"Content: {content}")
++            print("-" * 30)
++    except Exception as e:
++        print(f"Error: {e}")
++        sys.exit(1)
++
++
++if __name__ == "__main__":
++    main() 
+\ No newline at end of file

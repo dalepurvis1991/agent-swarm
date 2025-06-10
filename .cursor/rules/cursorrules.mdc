@@ -1,0 +1,22 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Cursor AI – Project Guardrails
+1. 🌱 **Small diffs only**  
+   – Touch only files named in the user story. Do *not* refactor unrelated code.
+2. ✅ **Red/green/refactor**  
+   – If tests fail, FIRST add or update a failing test, THEN fix code until green.
+3. 🤔 **Ask when unsure**  
+   – If requirements or inputs are ambiguous, output “QUESTION:” followed by the clarification you need.
+4. 🔄 **Two-strike loop guard**  
+   – If the same fix is attempted twice and tests still fail, STOP and ask for guidance.
+5. 🔒 **No secrets in code**  
+   – Never commit real API keys or tokens. Use environment variables only.
+6. 📝 **Explain migrations**  
+   – When database schema changes, include a `migrations/####_description.sql` and update docs.
+7. 📚 **Keep docs in sync**  
+   – Update `README` or relevant `.md` files whenever behaviour or public API changes.
+8. 🚦 **Exit criteria**  
+   – Finish when all tests pass **and** the PR description matches implemented behaviour.

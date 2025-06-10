@@ -207,13 +207,16 @@ class TestQuoteAgent:
             with patch('backend.agents.quote_agent.send_rfq') as mock_send:
                 mock_send.return_value = None
                 
-                agent = QuoteAgent()
-                results = await agent.process_quotes("test product", max_suppliers=1, poll_duration=1)
-                
-                assert results["suppliers_found"] == 1
-                assert results["rfqs_sent"] == 1
-                assert results["spec"] == "test product"
-                assert len(results["suppliers"]) == 1
+                with patch('backend.agents.quote_agent._poll_inbox') as mock_poll:
+                    mock_poll.return_value = []  # No offers found
+                    
+                    agent = QuoteAgent()
+                    results = await agent.process_quotes("test product", max_suppliers=1, poll_duration=1)
+                    
+                    assert results["suppliers_found"] == 1
+                    assert results["rfqs_sent"] == 1
+                    assert results["spec"] == "test product"
+                    assert len(results["suppliers"]) == 1
     
     @pytest.mark.asyncio
     async def test_process_quotes_no_suppliers(self):
@@ -237,11 +240,14 @@ class TestQuoteAgent:
             with patch('backend.agents.quote_agent.send_rfq') as mock_send:
                 mock_send.return_value = None
                 
-                # Should not raise exception
-                try:
-                    run_quote("test product", k=1, poll_duration=1)
-                except Exception as e:
-                    pytest.fail(f"run_quote raised an exception: {e}")
+                with patch('backend.agents.quote_agent._poll_inbox') as mock_poll:
+                    mock_poll.return_value = []
+                    
+                    # Should not raise exception
+                    try:
+                        run_quote("test product", k=1, poll_duration=1)
+                    except Exception as e:
+                        pytest.fail(f"run_quote raised an exception: {e}")
 
 
 class TestEmailIntegration:

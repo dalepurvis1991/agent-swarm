@@ -54,7 +54,7 @@ async def store_offer(offer_data: Dict[str, Any], supplier_info: Dict[str, str],
 
 async def _poll_inbox(spec: str, suppliers: List[Dict[str, str]], max_duration: int = 300) -> List[Dict[str, Any]]:
     """
-    Poll email inbox for supplier responses.
+    Poll email inbox for supplier responses using IMAP.
     
     Args:
         spec: Product specification being quoted
@@ -66,36 +66,121 @@ async def _poll_inbox(spec: str, suppliers: List[Dict[str, str]], max_duration: 
     """
     offers = []
     start_time = asyncio.get_event_loop().time()
+    processed_uids = set()  # Track processed emails to avoid duplicates
     
-    # Note: This is a simplified version for MailHog testing
-    # In production, you'd use proper IMAP with SSL and authentication
-    logger.info(f"Starting inbox polling for spec: {spec}")
-    logger.info("Note: This is a demo version - in production, implement proper IMAP polling")
+    logger.info(f"Starting IMAP inbox polling for spec: {spec}")
     
-    # For now, we'll just simulate the polling process
-    # In a real implementation, you would:
-    # 1. Connect to IMAP server
-    # 2. Search for new emails
-    # 3. Extract offers from matching emails
-    # 4. Store offers in database
+    # Get IMAP configuration
+    imap_config = get_imap_config()
+    imap_host = imap_config["IMAP_HOST"]
+    imap_port = int(imap_config["IMAP_PORT"])
+    imap_user = imap_config["IMAP_USER"]
+    imap_pass = imap_config["IMAP_PASS"]
+    
+    # Extract supplier email addresses for filtering
+    supplier_emails = set()
+    for supplier in suppliers:
+        clean_name = sanitize_email_name(supplier['name'])
+        supplier_emails.add(f"{clean_name}@example.com")
+    
+    logger.info(f"Monitoring for responses from: {', '.join(supplier_emails)}")
     
     while (asyncio.get_event_loop().time() - start_time) < max_duration:
         try:
-            # Simulate checking for new emails
+            # Connect to IMAP server
+            # Note: For MailHog, we use non-SSL connection
+            # In production, use SSL/TLS connections
+            with imapclient.IMAPClient(imap_host, port=imap_port, ssl=False) as server:
+                try:
+                    # Login to the server
+                    if imap_user and imap_pass:
+                        server.login(imap_user, imap_pass)
+                    
+                    # Select the INBOX folder
+                    server.select_folder('INBOX')
+                    
+                    # Search for unread messages
+                    # In production, you might want to search by date range or subject
+                    message_ids = server.search(['UNSEEN'])
+                    
+                    logger.info(f"Found {len(message_ids)} unread messages")
+                    
+                    for msg_id in message_ids:
+                        if msg_id in processed_uids:
+                            continue  # Skip already processed messages
+                        
+                        try:
+                            # Fetch the message
+                            response = server.fetch(msg_id, ['RFC822'])
+                            email_message = response[msg_id][b'RFC822'].decode('utf-8', errors='ignore')
+                            
+                            # Extract sender email from the raw message
+                            from_match = re.search(r'From:.*?([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', email_message)
+                            from_email = from_match.group(1) if from_match else ""
+                            
+                            # Check if this email is from one of our contacted suppliers
+                            if from_email in supplier_emails or any(email in from_email for email in supplier_emails):
+                                logger.info(f"Processing response from supplier: {from_email}")
+                                
+                                try:
+                                    # Extract offer data from the email
+                                    offer_data = extract_offer(email_message)
+                                    offer_data["from_email"] = from_email
+                                    
+                                    # Find matching supplier info
+                                    supplier_info = None
+                                    for supplier in suppliers:
+                                        clean_name = sanitize_email_name(supplier['name'])
+                                        expected_email = f"{clean_name}@example.com"
+                                        if from_email == expected_email:
+                                            supplier_info = supplier
+                                            break
+                                    
+                                    if supplier_info is None:
+                                        supplier_info = {"name": from_email.split("@")[0].replace("-", " ").title()}
+                                    
+                                    # Store the offer in the database
+                                    if offer_data.get("price") is not None:  # Only store if we found pricing
+                                        offer_id = await store_offer(offer_data, supplier_info, spec)
+                                        if offer_id:
+                                            offer_data["offer_id"] = offer_id
+                                            offers.append(offer_data)
+                                            logger.info(f"Stored offer {offer_id} from {supplier_info['name']}")
+                                        else:
+                                            logger.warning(f"Failed to store offer from {supplier_info['name']}")
+                                    else:
+                                        logger.info(f"No pricing found in email from {from_email}, skipping storage")
+                                    
+                                    # Mark as processed
+                                    processed_uids.add(msg_id)
+                                    
+                                    # Mark the email as read
+                                    server.add_flags(msg_id, [imapclient.SEEN])
+                                    
+                                except Exception as e:
+                                    logger.error(f"Error processing email from {from_email}: {e}")
+                            else:
+                                # Mark non-supplier emails as read to avoid reprocessing
+                                server.add_flags(msg_id, [imapclient.SEEN])
+                        
+                        except Exception as e:
+                            logger.error(f"Error processing message {msg_id}: {e}")
+                            continue
+                    
+                except imapclient.IMAPClientError as e:
+                    logger.error(f"IMAP client error: {e}")
+                except Exception as e:
+                    logger.error(f"IMAP connection error: {e}")
+            
+            # Wait before next poll
             await asyncio.sleep(10)  # Check every 10 seconds
             logger.info(f"Checking for new responses... ({len(offers)} offers found so far)")
             
-            # In a real implementation, this is where you'd:
-            # - Connect to IMAP
-            # - Search for UNSEEN emails
-            # - Parse and extract offers
-            # - Store in database
-            
         except Exception as e:
-            logger.error(f"Error polling inbox: {e}")
-            break
+            logger.error(f"Error in inbox polling cycle: {e}")
+            await asyncio.sleep(10)  # Wait before retrying
     
-    logger.info(f"Inbox polling completed. Found {len(offers)} offers.")
+    logger.info(f"IMAP inbox polling completed. Found {len(offers)} offers.")
     return offers
 
 

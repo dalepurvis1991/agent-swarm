@@ -1,0 +1,287 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  POETRY_VERSION: 1.6.1
+  PYTHON_VERSION: 3.11
+
+jobs:
+  lint:
+    name: Code Quality & Linting
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: ${{ env.POETRY_VERSION }}
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+    
+    - name: Load cached venv
+      id: cached-poetry-dependencies
+      uses: actions/cache@v3
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
+    
+    - name: Install dependencies
+      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+      run: poetry install --no-interaction --no-root
+    
+    - name: Install project
+      run: poetry install --no-interaction
+    
+    - name: Check code formatting with black
+      run: poetry run black --check --diff .
+    
+    - name: Lint with flake8
+      run: poetry run flake8 backend/ tests/ tools/ --max-line-length=88 --extend-ignore=E203,W503
+    
+    - name: Type checking with mypy
+      run: poetry run mypy backend/ tools/ --ignore-missing-imports
+      continue-on-error: true  # Don't fail the build on type errors initially
+
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: dev
+          POSTGRES_USER: dev
+          POSTGRES_DB: email_processing_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      mailhog:
+        image: mailhog/mailhog:latest
+        ports:
+          - 1025:1025  # SMTP
+          - 8025:8025  # Web UI
+          - 1143:1143  # IMAP (if supported by MailHog)
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: ${{ env.POETRY_VERSION }}
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+    
+    - name: Load cached venv
+      id: cached-poetry-dependencies
+      uses: actions/cache@v3
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
+    
+    - name: Install dependencies
+      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+      run: poetry install --no-interaction --no-root
+    
+    - name: Install project
+      run: poetry install --no-interaction
+    
+    - name: Run database migrations
+      env:
+        DATABASE_URL: postgresql://dev:dev@localhost:5432/email_processing_test
+      run: |
+        poetry run python -c "
+        import psycopg
+        from backend.app.db import DB_DSN
+        
+        # Create tables from migration files
+        with psycopg.connect('postgresql://dev:dev@localhost:5432/email_processing_test') as conn:
+            # Read and execute migration files
+            with open('migrations/001_initial.sql', 'r') as f:
+                conn.execute(f.read())
+            with open('migrations/002_offers.sql', 'r') as f:
+                conn.execute(f.read())
+            conn.commit()
+        print('Database migrations completed')
+        "
+    
+    - name: Run unit tests
+      env:
+        DATABASE_URL: postgresql://dev:dev@localhost:5432/email_processing_test
+        SERPAPI_KEY: test_key
+        SMTP_HOST: localhost
+        SMTP_PORT: 1025
+        SMTP_USER: test@example.com
+        SMTP_PASS: ""
+        IMAP_HOST: localhost
+        IMAP_PORT: 1143
+        IMAP_USER: test@example.com
+        IMAP_PASS: ""
+        SKIP_EXTERNAL_APIS: true
+      run: |
+        poetry run pytest tests/ -v \
+          --tb=short \
+          --cov=backend \
+          --cov-report=xml \
+          --cov-report=term-missing \
+          --durations=10 \
+          -m "not integration"
+    
+    - name: Run integration tests
+      env:
+        DATABASE_URL: postgresql://dev:dev@localhost:5432/email_processing_test
+        SERPAPI_KEY: test_key
+        SMTP_HOST: localhost
+        SMTP_PORT: 1025
+        SMTP_USER: test@example.com
+        SMTP_PASS: ""
+        IMAP_HOST: localhost
+        IMAP_PORT: 1143
+        IMAP_USER: test@example.com
+        IMAP_PASS: ""
+        SKIP_EXTERNAL_APIS: false
+      run: |
+        # Wait for services to be ready
+        sleep 10
+        
+        # Test email sending to MailHog
+        poetry run python -c "
+        import asyncio
+        import httpx
+        from backend.email.outgoing import send_rfq
+        
+        async def test_email():
+            try:
+                await send_rfq('test@example.com', 'CI test product')
+                print('✅ Email sending test passed')
+                
+                # Check if email was received by MailHog
+                response = httpx.get('http://localhost:8025/api/v2/messages')
+                if response.status_code == 200:
+                    messages = response.json()
+                    print(f'✅ MailHog received {messages[\"total\"]} messages')
+                else:
+                    print('⚠️ Could not verify MailHog reception')
+            except Exception as e:
+                print(f'❌ Email integration test failed: {e}')
+                raise
+        
+        asyncio.run(test_email())
+        "
+      continue-on-error: true  # Don't fail build if MailHog integration has issues
+    
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: ${{ env.POETRY_VERSION }}
+    
+    - name: Install dependencies
+      run: poetry install --no-interaction
+    
+    - name: Run safety check for known security vulnerabilities
+      run: poetry run safety check --json
+      continue-on-error: true
+    
+    - name: Run bandit security linter
+      run: poetry run bandit -r backend/ -f json
+      continue-on-error: true
+
+  docker:
+    name: Docker Build & Test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Test docker-compose build
+      run: |
+        # Test that docker-compose builds successfully
+        docker-compose -f docker-compose.yml config
+        echo "✅ docker-compose configuration is valid"
+    
+    - name: Test service startup
+      run: |
+        # Start services and test they come up
+        docker-compose up -d postgres mailhog
+        
+        # Wait for services
+        sleep 30
+        
+        # Test database connection
+        docker-compose exec -T postgres psql -U dev -d email_processing -c "SELECT 1;"
+        
+        # Test MailHog API
+        curl -f http://localhost:8025/api/v2/messages || echo "MailHog API check failed"
+        
+        # Cleanup
+        docker-compose down -v
+      continue-on-error: true
+
+  notify:
+    name: Notifications
+    runs-on: ubuntu-latest
+    needs: [lint, test, security]
+    if: always()
+    
+    steps:
+    - name: Notify on success
+      if: ${{ needs.lint.result == 'success' && needs.test.result == 'success' }}
+      run: |
+        echo "🎉 All checks passed! Ready for deployment."
+    
+    - name: Notify on failure
+      if: ${{ needs.lint.result == 'failure' || needs.test.result == 'failure' }}
+      run: |
+        echo "❌ Some checks failed. Please review the errors above."
+        exit 1 

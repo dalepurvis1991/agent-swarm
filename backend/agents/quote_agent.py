@@ -16,6 +16,7 @@ from backend.suppliers.serp import find_suppliers_async
 from backend.email.outgoing import send_rfq, EmailSendError
 from backend.email.parser import extract_offer
 from backend.app.offers import OfferManager
+from pricing import scrape_catalogs, get_mock_results
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,98 @@ async def store_offer(offer_data: Dict[str, Any], supplier_info: Dict[str, str],
     except Exception as e:
         logger.error(f"Failed to store offer: {e}")
         return None
+
+
+def prefilter_suppliers_by_price(suppliers: List[Dict[str, str]], spec: str, max_suppliers: int = 3) -> List[Dict[str, str]]:
+    """
+    Prefilter suppliers using price hunting before sending RFQs.
+    
+    Args:
+        suppliers: List of supplier dictionaries
+        spec: Product specification  
+        max_suppliers: Maximum number of suppliers to return
+        
+    Returns:
+        List of suppliers ordered by cheapest list price
+    """
+    try:
+        # Get API key from environment (optional)
+        serpapi_key = os.getenv("SERPAPI_KEY")
+        
+        # Scrape catalog prices
+        logger.info(f"Price hunting for '{spec}' before sending RFQs...")
+        
+        # Use mock results for now (in production, use real scraping)
+        # This allows testing without API dependencies
+        if os.getenv("USE_MOCK_PRICING", "true").lower() == "true":
+            price_results = get_mock_results(spec)
+        else:
+            price_results = scrape_catalogs(spec, max_results=10, serpapi_key=serpapi_key)
+        
+        if not price_results:
+            logger.warning("No price results found, using original supplier order")
+            return suppliers[:max_suppliers]
+        
+        logger.info(f"Found {len(price_results)} price results:")
+        for supplier, url, price in price_results[:5]:  # Log top 5
+            logger.info(f"  {supplier}: ${price:.2f}")
+        
+        # Create a mapping of price results by supplier name
+        price_map = {}
+        for supplier_name, url, price in price_results:
+            # Normalize supplier names for matching
+            normalized_name = supplier_name.lower().replace(' ', '').replace('-', '')
+            price_map[normalized_name] = {
+                'price': price,
+                'url': url,
+                'original_name': supplier_name
+            }
+        
+        # Match suppliers with price data and sort by price
+        enriched_suppliers = []
+        unmatched_suppliers = []
+        
+        for supplier in suppliers:
+            normalized_supplier = supplier['name'].lower().replace(' ', '').replace('-', '')
+            
+            # Try to find price match
+            matched_price = None
+            for price_name in price_map:
+                if (price_name in normalized_supplier or 
+                    normalized_supplier in price_name or
+                    any(word in price_name for word in normalized_supplier.split() if len(word) > 3)):
+                    matched_price = price_map[price_name]
+                    break
+            
+            if matched_price:
+                supplier_with_price = supplier.copy()
+                supplier_with_price['list_price'] = matched_price['price']
+                supplier_with_price['price_source'] = matched_price['url']
+                enriched_suppliers.append(supplier_with_price)
+                logger.info(f"Matched {supplier['name']} with price ${matched_price['price']:.2f}")
+            else:
+                unmatched_suppliers.append(supplier)
+        
+        # Sort enriched suppliers by price (cheapest first)
+        enriched_suppliers.sort(key=lambda x: x['list_price'])
+        
+        # Combine sorted price-matched suppliers with unmatched ones
+        final_suppliers = enriched_suppliers + unmatched_suppliers
+        
+        # Return top N suppliers
+        selected_suppliers = final_suppliers[:max_suppliers]
+        
+        logger.info(f"Selected {len(selected_suppliers)} suppliers ordered by price:")
+        for i, supplier in enumerate(selected_suppliers, 1):
+            price_info = f"${supplier['list_price']:.2f}" if 'list_price' in supplier else "No price data"
+            logger.info(f"  {i}. {supplier['name']} - {price_info}")
+        
+        return selected_suppliers
+        
+    except Exception as e:
+        logger.error(f"Price prefiltering failed: {e}")
+        logger.info("Falling back to original supplier list")
+        return suppliers[:max_suppliers]
 
 
 async def _poll_inbox(spec: str, suppliers: List[Dict[str, str]], max_duration: int = 300) -> List[Dict[str, Any]]:
@@ -225,7 +318,7 @@ class QuoteAgent:
     
     async def process_quotes(self, spec: str, max_suppliers: int = 3, poll_duration: int = 60) -> Dict[str, Any]:
         """
-        Complete quote process: find suppliers, send RFQs, collect responses.
+        Complete quote process: find suppliers, hunt prices, send RFQs, collect responses.
         
         Args:
             spec: Product specification to quote
@@ -238,16 +331,18 @@ class QuoteAgent:
         results = {
             "spec": spec,
             "suppliers_found": 0,
+            "suppliers_after_price_filter": 0,
             "rfqs_sent": 0,
             "offers_received": 0,
             "suppliers": [],
+            "filtered_suppliers": [],
             "offers": []
         }
         
         try:
             # Step 1: Find suppliers using async version
             logger.info(f"Finding suppliers for: {spec}")
-            suppliers = await find_suppliers_async(spec, k=max_suppliers)
+            suppliers = await find_suppliers_async(spec, k=max_suppliers * 2)  # Get more for filtering
             results["suppliers_found"] = len(suppliers)
             results["suppliers"] = suppliers
             
@@ -255,18 +350,24 @@ class QuoteAgent:
                 logger.warning("No suppliers found")
                 return results
             
-            # Step 2: Send RFQs
-            logger.info(f"Sending RFQs to {len(suppliers)} suppliers")
-            sent_emails = await self.send_rfqs(spec, suppliers)
+            # Step 2: NEW - Price hunt and prefilter suppliers
+            logger.info("🎯 Price hunting to find cheapest suppliers...")
+            filtered_suppliers = prefilter_suppliers_by_price(suppliers, spec, max_suppliers)
+            results["suppliers_after_price_filter"] = len(filtered_suppliers)
+            results["filtered_suppliers"] = filtered_suppliers
+            
+            # Step 3: Send RFQs to filtered suppliers
+            logger.info(f"Sending RFQs to {len(filtered_suppliers)} price-filtered suppliers")
+            sent_emails = await self.send_rfqs(spec, filtered_suppliers)
             results["rfqs_sent"] = len(sent_emails)
             
             if not sent_emails:
                 logger.warning("No RFQs were sent successfully")
                 return results
             
-            # Step 3: Monitor for responses
+            # Step 4: Monitor for responses
             logger.info(f"Monitoring inbox for {poll_duration} seconds")
-            offers = await _poll_inbox(spec, suppliers, poll_duration)
+            offers = await _poll_inbox(spec, filtered_suppliers, poll_duration)
             results["offers_received"] = len(offers)
             results["offers"] = offers
             
@@ -297,13 +398,15 @@ def run_quote(spec: str, k: int = 3, poll_duration: int = 60) -> None:
         print(f"\n🔍 Quote Process Results for: '{spec}'")
         print("=" * 60)
         print(f"Suppliers found: {results['suppliers_found']}")
+        print(f"Suppliers after price filtering: {results['suppliers_after_price_filter']}")
         print(f"RFQs sent: {results['rfqs_sent']}")
         print(f"Offers received: {results['offers_received']}")
         
-        if results['suppliers']:
-            print(f"\n📧 Suppliers contacted:")
-            for i, supplier in enumerate(results['suppliers'], 1):
-                print(f"  {i}. {supplier['name']}")
+        if results['filtered_suppliers']:
+            print(f"\n🎯 Price-filtered suppliers (cheapest first):")
+            for i, supplier in enumerate(results['filtered_suppliers'], 1):
+                price_info = f"${supplier['list_price']:.2f}" if 'list_price' in supplier else "No price data"
+                print(f"  {i}. {supplier['name']} - {price_info}")
                 print(f"     URL: {supplier['url']}")
                 print(f"     Source: {supplier['source']}")
         

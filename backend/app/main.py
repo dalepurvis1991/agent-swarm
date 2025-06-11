@@ -2,9 +2,12 @@ import json
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 from backend.app.models import EmailPayload
 from backend.app.db import add_doc, init_db
+from backend.app.routes import quotes_router
+from backend.app.routes_clarify import rfq_router
 
 logging.basicConfig(level=logging.INFO)
 
@@ -23,6 +26,21 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include the quotes router
+app.include_router(quotes_router)
+
+# Include the RFQ clarification router
+app.include_router(rfq_router)
 
 
 @app.post("/incoming-email", status_code=status.HTTP_200_OK)

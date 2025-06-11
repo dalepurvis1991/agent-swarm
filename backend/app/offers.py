@@ -365,4 +365,53 @@ async def get_offers_by_spec(spec: str, limit: Optional[int] = None) -> List[Dic
 
 async def get_offers_by_supplier(supplier_email: str) -> List[Dict[str, Any]]:
     """Convenience function for retrieving offers by supplier."""
-    return await OfferManager.get_offers_by_supplier(supplier_email) 
+    return await OfferManager.get_offers_by_supplier(supplier_email)
+
+
+def get_offers(spec: str, limit: int = 3) -> list[dict]:
+    """
+    Get the cheapest offers for a specification, sorted by price ascending.
+    
+    Args:
+        spec: Product specification to search for
+        limit: Maximum number of offers to return (default 3)
+        
+    Returns:
+        List of offer dictionaries sorted by price ascending
+    """
+    try:
+        if not spec or not spec.strip():
+            return []
+        
+        with get_connection() as conn:
+            conn.row_factory = dict_row
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT id, supplier_name, supplier_email, spec, price, currency,
+                       lead_time, lead_time_unit, email_body, created_at, parsed_at
+                FROM supplier_offers
+                WHERE spec ILIKE %s AND price IS NOT NULL
+                ORDER BY price ASC
+                LIMIT %s
+            """, (f"%{spec.strip()}%", limit))
+            
+            offers = cursor.fetchall()
+            
+            # Convert to regular dicts and ensure datetime objects are serializable
+            result = []
+            for offer in offers:
+                offer_dict = dict(offer)
+                # Convert datetime objects to ISO format strings
+                if offer_dict.get('created_at'):
+                    offer_dict['created_at'] = offer_dict['created_at'].isoformat()
+                if offer_dict.get('parsed_at'):
+                    offer_dict['parsed_at'] = offer_dict['parsed_at'].isoformat()
+                result.append(offer_dict)
+            
+            logger.info(f"Retrieved {len(result)} cheapest offers for spec: {spec}")
+            return result
+            
+    except Exception as e:
+        logger.error(f"Error getting offers for spec {spec}: {e}")
+        return [] 

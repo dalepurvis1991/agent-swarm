@@ -207,4 +207,59 @@ Guidelines:
                 "budget": "market rate"
             },
             reasoning="Basic specification provided, suppliers can provide initial quotes"
-        ) 
+        )
+
+class ClarifyAgent:
+    SYSTEM_PROMPT = """You are a helpful assistant that helps clarify product specifications.
+    If the specification is incomplete or unclear, ask ONE follow-up question to get the missing information.
+    If the specification is complete, respond with status="complete" and include the structured specification in spec_json.
+    Keep your questions focused and specific."""
+
+    def __init__(self, api_key: str):
+        openai.api_key = api_key
+
+    def chat(self, spec: str) -> Dict:
+        """
+        Process a specification and either ask a follow-up question or return a complete spec.
+        
+        Args:
+            spec: The current specification text
+            
+        Returns:
+            Dict containing either:
+            - status="question" and a follow-up question
+            - status="complete" and the structured spec_json
+        """
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": self.SYSTEM_PROMPT},
+                    {"role": "user", "content": spec}
+                ],
+                temperature=0.7,
+                max_tokens=500
+            )
+            
+            # Extract the assistant's response
+            assistant_response = response.choices[0].message.content
+            
+            # Check if the response indicates completion
+            if "status=\"complete\"" in assistant_response.lower():
+                # Extract the spec_json from the response
+                # This is a simple implementation - you might want to make this more robust
+                return {
+                    "status": "complete",
+                    "spec_json": assistant_response
+                }
+            else:
+                return {
+                    "status": "question",
+                    "question": assistant_response
+                }
+                
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e)
+            } 

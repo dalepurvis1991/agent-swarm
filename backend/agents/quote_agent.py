@@ -10,6 +10,7 @@ import anyio
 import imapclient
 import psycopg
 import re
+from decimal import Decimal
 
 from backend.suppliers import find_suppliers, SupplierSearchError
 from backend.suppliers.serp import find_suppliers_async
@@ -291,7 +292,11 @@ def sanitize_email_name(name: str) -> str:
 class QuoteAgent:
     """Agent for managing automated quote requests and responses."""
     
-    def __init__(self):
+    MAX_COUNTER_ROUNDS = 3
+    COUNTER_DISCOUNT_PERCENTAGE = 5  # 5% reduction per counter
+    
+    def __init__(self, db_connection):
+        self.db = db_connection
         self.suppliers = []
         self.offers = []
     
@@ -380,6 +385,148 @@ class QuoteAgent:
             logger.error(f"Quote process failed: {e}")
             raise QuoteAgentError(f"Quote process failed: {e}")
 
+    def process_quote(self, offer_id: int) -> Dict:
+        """Process a quote and determine if counter offer is needed"""
+        try:
+            # Get offer details
+            cursor = self.db.cursor()
+            cursor.execute("""
+                SELECT o.id, o.supplier_id, o.price, o.status, o.counter_round,
+                       s.name as supplier_name, s.email as supplier_email,
+                       p.name as product_name, p.list_price
+                FROM offers o
+                JOIN suppliers s ON o.supplier_id = s.id
+                JOIN products p ON o.product_id = p.id
+                WHERE o.id = %s
+            """, (offer_id,))
+            
+            offer = cursor.fetchone()
+            if not offer:
+                return {"status": "error", "message": "Offer not found"}
+                
+            # Calculate target price (5% below list price)
+            target_price = Decimal(str(offer['list_price'])) * Decimal('0.95')
+            
+            # If price is already below target, accept it
+            if offer['price'] <= target_price:
+                return self._accept_offer(offer_id)
+                
+            # If we've reached max counter rounds, mark as needs_user
+            if offer['counter_round'] >= self.MAX_COUNTER_ROUNDS:
+                return self._mark_needs_user(offer_id)
+                
+            # Calculate counter price
+            counter_price = offer['price'] * Decimal(str(1 - self.COUNTER_DISCOUNT_PERCENTAGE / 100))
+            
+            # Send counter offer
+            return self._send_counter_offer(offer_id, counter_price, offer)
+            
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+            
+    def _accept_offer(self, offer_id: int) -> Dict:
+        """Accept an offer"""
+        cursor = self.db.cursor()
+        cursor.execute("""
+            UPDATE offers
+            SET status = 'ordered'
+            WHERE id = %s
+            RETURNING id
+        """, (offer_id,))
+        self.db.commit()
+        return {"status": "ordered", "message": "Offer accepted"}
+        
+    def _mark_needs_user(self, offer_id: int) -> Dict:
+        """Mark an offer as needing user input"""
+        cursor = self.db.cursor()
+        cursor.execute("""
+            UPDATE offers
+            SET status = 'needs_user'
+            WHERE id = %s
+            RETURNING id
+        """, (offer_id,))
+        self.db.commit()
+        return {"status": "needs_user", "message": "Maximum counter rounds reached"}
+        
+    def _send_counter_offer(self, offer_id: int, counter_price: Decimal, offer: Dict) -> Dict:
+        """Send a counter offer to the supplier"""
+        try:
+            # Update offer status
+            cursor = self.db.cursor()
+            cursor.execute("""
+                UPDATE offers
+                SET status = 'countered',
+                    counter_price = %s
+                WHERE id = %s
+                RETURNING id
+            """, (counter_price, offer_id))
+            self.db.commit()
+            
+            # Prepare email content
+            email_content = self._prepare_counter_email(
+                supplier_name=offer['supplier_name'],
+                product_name=offer['product_name'],
+                original_price=offer['price'],
+                counter_price=counter_price,
+                discount_percentage=self.COUNTER_DISCOUNT_PERCENTAGE
+            )
+            
+            # Send email (implement your email sending logic here)
+            # send_email(offer['supplier_email'], "Counter Offer", email_content)
+            
+            return {
+                "status": "countered",
+                "message": "Counter offer sent",
+                "counter_price": float(counter_price)
+            }
+            
+        except Exception as e:
+            self.db.rollback()
+            return {"status": "error", "message": str(e)}
+            
+    def _prepare_counter_email(self, **kwargs) -> str:
+        """Prepare counter offer email content"""
+        with open('email/counter_offer.txt', 'r') as f:
+            template = f.read()
+            
+        # Replace placeholders
+        for key, value in kwargs.items():
+            template = template.replace(f"{{{key}}}", str(value))
+            
+        return template
+        
+    def process_supplier_response(self, offer_id: int, response_text: str) -> Dict:
+        """Process supplier's response to a counter offer"""
+        try:
+            # Check if response indicates final offer
+            is_final = bool(re.search(r'final\s+offer|best\s+price|cannot\s+go\s+lower', 
+                                    response_text.lower()))
+            
+            cursor = self.db.cursor()
+            if is_final:
+                cursor.execute("""
+                    UPDATE offers
+                    SET status = 'final'
+                    WHERE id = %s
+                    RETURNING id
+                """, (offer_id,))
+                status = "final"
+            else:
+                cursor.execute("""
+                    UPDATE offers
+                    SET status = 'open'
+                    WHERE id = %s
+                    RETURNING id
+                """, (offer_id,))
+                status = "open"
+                
+            self.db.commit()
+            return {"status": status, "message": "Response processed"}
+            
+        except Exception as e:
+            self.db.rollback()
+            return {"status": "error", "message": str(e)}
+
 
 def run_quote(spec: str, k: int = 3, poll_duration: int = 60) -> None:
     """
@@ -391,7 +538,7 @@ def run_quote(spec: str, k: int = 3, poll_duration: int = 60) -> None:
         poll_duration: How long to wait for responses
     """
     async def _run():
-        agent = QuoteAgent()
+        agent = QuoteAgent(get_db_connection())
         results = await agent.process_quotes(spec, k, poll_duration)
         
         # Print results

@@ -8,6 +8,11 @@ from pydantic import BaseModel
 from backend.app.db import get_connection
 from backend.agents.clarify_agent import SpecificationClarifier, ClarificationResponse
 import json
+from datetime import datetime
+
+from ..database import get_db
+from ..agents.clarify_agent import ClarifyAgent
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -284,4 +289,94 @@ async def list_rfq_sessions(limit: int = 50, status: Optional[str] = None):
         
     except Exception as e:
         logger.error(f"Error listing RFQ sessions: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to list sessions: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Failed to list sessions: {str(e)}")
+
+
+@rfq_router.post("/rfq/start")
+async def start_rfq(rfq: StartRFQRequest, db = Depends(get_db)):
+    """Start a new RFQ clarification session"""
+    try:
+        # Create new session
+        cursor = db.cursor()
+        cursor.execute(
+            """
+            INSERT INTO rfq_sessions (spec_json, status)
+            VALUES (%s, %s)
+            RETURNING id
+            """,
+            (json.dumps({"initial_spec": rfq.specification}), "pending")
+        )
+        session_id = cursor.fetchone()[0]
+        db.commit()
+
+        # Initialize clarify agent
+        agent = ClarifyAgent(settings.OPENAI_API_KEY)
+        
+        # Get first question
+        response = agent.chat(rfq.specification)
+        
+        if response["status"] == "error":
+            raise HTTPException(status_code=500, detail=response["error"])
+            
+        return {
+            "session_id": session_id,
+            "question": response.get("question"),
+            "status": response["status"]
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@rfq_router.post("/rfq/answer")
+async def answer_rfq(answer: AnswerRFQRequest, db = Depends(get_db)):
+    """Process an answer to a clarification question"""
+    try:
+        # Get session
+        cursor = db.cursor()
+        cursor.execute(
+            "SELECT spec_json, status FROM rfq_sessions WHERE id = %s",
+            (answer.session_id,)
+        )
+        result = cursor.fetchone()
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Session not found")
+            
+        spec_json, status = result
+        
+        if status == "complete":
+            raise HTTPException(status_code=400, detail="Session already complete")
+            
+        # Update spec with answer
+        spec_data = json.loads(spec_json)
+        spec_data["answers"] = spec_data.get("answers", []) + [answer.answer]
+        
+        # Get next question or completion
+        agent = ClarifyAgent(settings.OPENAI_API_KEY)
+        response = agent.chat(json.dumps(spec_data))
+        
+        if response["status"] == "error":
+            raise HTTPException(status_code=500, detail=response["error"])
+            
+        # Update session
+        cursor.execute(
+            """
+            UPDATE rfq_sessions 
+            SET spec_json = %s, status = %s
+            WHERE id = %s
+            """,
+            (json.dumps(spec_data), response["status"], answer.session_id)
+        )
+        db.commit()
+        
+        return {
+            "status": response["status"],
+            "question": response.get("question"),
+            "spec_json": response.get("spec_json")
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e)) 

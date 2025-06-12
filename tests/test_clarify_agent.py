@@ -1,8 +1,8 @@
 """Tests for the specification clarification agent."""
 
 import pytest
-from unittest.mock import Mock, patch
-from backend.agents.clarify_agent import SpecificationClarifier, ClarificationResponse
+from unittest.mock import Mock, patch, MagicMock
+from backend.agents.clarify_agent import SpecificationClarifier, ClarificationResponse, ClarifyAgent
 
 
 class TestSpecificationClarifier:
@@ -225,4 +225,59 @@ class TestClarificationResponse:
             reasoning="Test reasoning"
         )
         assert response.status == "needs_clarification"
-        assert response.question == "Test question" 
+        assert response.question == "Test question"
+
+@pytest.fixture
+def mock_openai():
+    with patch('openai.ChatCompletion.create') as mock:
+        yield mock
+
+@pytest.fixture
+def agent():
+    return ClarifyAgent("fake-api-key")
+
+def test_clarify_agent_asks_question(mock_openai, agent):
+    # Mock OpenAI response for incomplete spec
+    mock_openai.return_value = MagicMock(
+        choices=[
+            MagicMock(
+                message=MagicMock(
+                    content="What is the required quantity for this order?"
+                )
+            )
+        ]
+    )
+    
+    response = agent.chat("I need some widgets")
+    
+    assert response["status"] == "question"
+    assert "quantity" in response["question"].lower()
+    mock_openai.assert_called_once()
+
+def test_clarify_agent_completes_spec(mock_openai, agent):
+    # Mock OpenAI response for complete spec
+    mock_openai.return_value = MagicMock(
+        choices=[
+            MagicMock(
+                message=MagicMock(
+                    content='status="complete" spec_json={"product": "widgets", "quantity": 100}'
+                )
+            )
+        ]
+    )
+    
+    response = agent.chat("I need 100 widgets")
+    
+    assert response["status"] == "complete"
+    assert "spec_json" in response
+    mock_openai.assert_called_once()
+
+def test_clarify_agent_handles_error(mock_openai, agent):
+    # Mock OpenAI error
+    mock_openai.side_effect = Exception("API Error")
+    
+    response = agent.chat("I need some widgets")
+    
+    assert response["status"] == "error"
+    assert "error" in response
+    mock_openai.assert_called_once() 

@@ -1,0 +1,34 @@
+Subject: Purchase Order {po_number}
+
+Dear {supplier_name},
+
+Please find below our purchase order for the following items:
+
+Product: {product_name}
+Specification: {specification}
+Quantity: 1
+Unit Price: ${price}
+Total Amount: ${price}
+
+Purchase Order Number: {po_number}
+Date: {date}
+
+Delivery Instructions:
+- Please confirm receipt of this purchase order
+- Expected delivery date: {delivery_date}
+- Shipping address: {shipping_address}
+
+Payment Terms:
+- Net 30 days from date of invoice
+- Please include PO number on all correspondence
+
+Please confirm your acceptance of this order by replying to this email.
+
+Best regards,
+{company_name} Procurement Team
+
+---
+This is an automated message. Please do not reply directly to this email.
+For urgent matters, contact {contact_email} or call {contact_phone}.
+
+[Attached: Purchase Order {po_number}.pdf] 

@@ -1,27 +1,22 @@
 -- Migration: RFQ Sessions for Specification Clarification
 -- Creates table to track user specification clarification sessions
 
-CREATE TABLE IF NOT EXISTS rfq_sessions (
+CREATE TABLE rfq_sessions (
     id SERIAL PRIMARY KEY,
-    session_id UUID DEFAULT gen_random_uuid() UNIQUE NOT NULL,
-    original_spec TEXT NOT NULL,
-    spec_json JSONB,
-    status VARCHAR(20) DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'complete', 'abandoned')),
-    messages JSONB DEFAULT '[]'::jsonb,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    spec_json JSONB NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Index for faster lookups
-CREATE INDEX IF NOT EXISTS idx_rfq_sessions_session_id ON rfq_sessions(session_id);
-CREATE INDEX IF NOT EXISTS idx_rfq_sessions_status ON rfq_sessions(status);
-CREATE INDEX IF NOT EXISTS idx_rfq_sessions_created_at ON rfq_sessions(created_at);
+-- Add index on status for faster queries
+CREATE INDEX idx_rfq_sessions_status ON rfq_sessions(status);
 
--- Trigger to update updated_at timestamp
-CREATE OR REPLACE FUNCTION update_rfq_sessions_updated_at()
+-- Add trigger to update updated_at
+CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = NOW();
+    NEW.updated_at = CURRENT_TIMESTAMP;
     RETURN NEW;
 END;
 $$ language 'plpgsql';
@@ -29,4 +24,4 @@ $$ language 'plpgsql';
 CREATE TRIGGER update_rfq_sessions_updated_at
     BEFORE UPDATE ON rfq_sessions
     FOR EACH ROW
-    EXECUTE FUNCTION update_rfq_sessions_updated_at(); 
+    EXECUTE FUNCTION update_updated_at_column(); 

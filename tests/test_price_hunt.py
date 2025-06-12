@@ -10,7 +10,8 @@ from pricing.scrape_catalogs import (
     scrape_catalogs, 
     get_mock_results, 
     CatalogScraper, 
-    PriceResult
+    PriceResult,
+    Product
 )
 from backend.agents.quote_agent import prefilter_suppliers_by_price
 
@@ -412,4 +413,80 @@ class TestIntegration:
         
         # Special characters in spec
         result = prefilter_suppliers_by_price(suppliers, "eco-tote_bags@#$", max_suppliers=1)
-        assert len(result) <= 1 
+        assert len(result) <= 1
+
+
+@pytest.fixture
+def mock_serpapi():
+    with patch('serpapi.GoogleSearch') as mock:
+        yield mock
+
+@pytest.fixture
+def sample_products():
+    return [
+        Product(name="Widget A", price=100.0, supplier="Supplier 1", url="http://supplier1.com"),
+        Product(name="Widget B", price=90.0, supplier="Supplier 2", url="http://supplier2.com"),
+        Product(name="Widget C", price=110.0, supplier="Supplier 1", url="http://supplier1.com"),
+        Product(name="Widget D", price=85.0, supplier="Supplier 3", url="http://supplier3.com"),
+    ]
+
+def test_search_products(mock_serpapi):
+    # Mock SerpAPI response
+    mock_serpapi.return_value.get_dict.return_value = {
+        "shopping_results": [
+            {
+                "title": "Test Widget",
+                "price": "$99.99",
+                "source": "Test Supplier",
+                "link": "http://test.com"
+            }
+        ]
+    }
+    
+    scraper = CatalogScraper("fake-api-key")
+    products = scraper.search_products("test widget")
+    
+    assert len(products) == 1
+    assert products[0].name == "Test Widget"
+    assert products[0].price == 99.99
+    assert products[0].supplier == "Test Supplier"
+    mock_serpapi.assert_called_once()
+
+def test_scrape_static_catalog():
+    html_content = """
+    <div class="product-item">
+        <div class="product-name">Static Widget</div>
+        <div class="product-price">$88.88</div>
+        <div class="supplier-name">Static Supplier</div>
+        <a href="http://static.com">Link</a>
+    </div>
+    """
+    
+    scraper = CatalogScraper("fake-api-key")
+    products = scraper.scrape_static_catalog(html_content)
+    
+    assert len(products) == 1
+    assert products[0].name == "Static Widget"
+    assert products[0].price == 88.88
+    assert products[0].supplier == "Static Supplier"
+
+def test_prefilter_suppliers_by_price(sample_products):
+    # Test default top_n=3
+    filtered = prefilter_suppliers_by_price(sample_products)
+    assert len(filtered) == 3
+    assert filtered[0].supplier == "Supplier 3"  # Cheapest
+    assert filtered[1].supplier == "Supplier 2"  # Second cheapest
+    assert filtered[2].supplier == "Supplier 1"  # Third cheapest (first occurrence)
+
+def test_prefilter_suppliers_by_price_custom_n(sample_products):
+    # Test custom top_n=2
+    filtered = prefilter_suppliers_by_price(sample_products, top_n=2)
+    assert len(filtered) == 2
+    assert filtered[0].supplier == "Supplier 3"  # Cheapest
+    assert filtered[1].supplier == "Supplier 2"  # Second cheapest
+
+def test_prefilter_suppliers_by_price_unique_suppliers(sample_products):
+    # Test that we only get one product per supplier
+    filtered = prefilter_suppliers_by_price(sample_products)
+    suppliers = {p.supplier for p in filtered}
+    assert len(suppliers) == len(filtered)  # Each supplier appears only once 

@@ -77,7 +77,7 @@ class OrderAgent:
             
     def _prepare_po_email(self, **kwargs) -> str:
         """Prepare purchase order email content"""
-        with open('email/po.txt', 'r') as f:
+        with open('backend/email_templates/po.txt', 'r') as f:
             template = f.read()
             
         # Replace placeholders

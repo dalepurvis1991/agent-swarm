@@ -1,0 +1,19 @@
+Subject: Counter Offer for Your Quote Request
+
+Dear {supplier_name},
+
+Thank you for your quote for {product_name}. We appreciate your response and would like to make a counter offer.
+
+Your quoted price: ${original_price}
+Our counter offer: ${counter_price}
+
+This represents a {discount_percentage}% reduction from your original quote. We believe this price better reflects current market conditions and our expected order volume.
+
+Please let us know if you can accept this counter offer. If this is your final price, please indicate so in your response.
+
+Best regards,
+{company_name} Procurement Team
+
+---
+This is an automated message. Please do not reply directly to this email.
+For urgent matters, contact {contact_email} or call {contact_phone}. 

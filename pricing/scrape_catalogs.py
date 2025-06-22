@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 import json
 import time
 import os
-from serpapi import GoogleSearch
+from serpapi import Client
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -55,12 +55,11 @@ class CatalogScraper:
     def search_products(self, query: str) -> List[Product]:
         """Search for products using SerpAPI shopping results"""
         try:
-            search = GoogleSearch({
+            client = Client(api_key=self.serpapi_key)
+            results = client.search({
                 "engine": "google_shopping",
-                "q": query,
-                "api_key": self.serpapi_key
+                "q": query
             })
-            results = search.get_dict()
             
             products = []
             for item in results.get("shopping_results", []):

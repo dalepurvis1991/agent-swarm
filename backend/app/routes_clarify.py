@@ -5,14 +5,10 @@ import uuid
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from backend.app.db import get_connection
-from backend.agents.clarify_agent import SpecificationClarifier, ClarificationResponse
+from .db import get_connection, get_db
+from ..agents.clarify_agent import SpecificationClarifier, ClarificationResponse, ClarifyAgent
 import json
 from datetime import datetime
-
-from ..database import get_db
-from ..agents.clarify_agent import ClarifyAgent
-from ..config import settings
 
 logger = logging.getLogger(__name__)
 

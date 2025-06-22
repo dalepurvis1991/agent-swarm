@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import QuoteCard from './components/QuoteCard'
 import RFQChat from './components/RFQChat'
+import IntelligentRFQChat from './components/IntelligentRFQChat'
 
 function App() {
   const [activeTab, setActiveTab] = useState('search')
@@ -97,7 +98,7 @@ function App() {
         {/* Tab Content */}
         {activeTab === 'rfq' && (
           <div className="mb-8">
-            <RFQChat />
+            <IntelligentRFQChat />
           </div>
         )}
 

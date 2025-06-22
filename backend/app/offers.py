@@ -7,8 +7,8 @@ including storing, retrieving, updating, and managing offer data.
 import logging
 from typing import Dict, Any, List, Optional, Union
 from datetime import datetime
-import psycopg
-from psycopg.rows import dict_row
+import psycopg2
+import psycopg2.extras
 
 from backend.app.db import get_connection
 
@@ -108,7 +108,7 @@ class OfferManager:
                 logger.info(f"Stored offer {offer_id} from {supplier_name} for spec: {spec}")
                 return offer_id
                 
-        except psycopg.Error as e:
+        except psycopg2.Error as e:
             logger.error(f"Database error storing offer: {e}")
             raise OfferError(f"Failed to store offer in database: {e}")
         except Exception as e:
@@ -135,8 +135,7 @@ class OfferManager:
                 raise OfferError("Specification cannot be empty")
             
             with get_connection() as conn:
-                conn.row_factory = dict_row
-                cursor = conn.cursor()
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 
                 query = """
                     SELECT id, supplier_name, supplier_email, spec, price, currency,
@@ -158,7 +157,7 @@ class OfferManager:
                 logger.info(f"Retrieved {len(offers)} offers for spec: {spec}")
                 return offers
                 
-        except psycopg.Error as e:
+        except psycopg2.Error as e:
             logger.error(f"Database error retrieving offers: {e}")
             raise OfferError(f"Failed to retrieve offers: {e}")
         except Exception as e:
@@ -184,8 +183,7 @@ class OfferManager:
                 raise OfferError("Supplier email cannot be empty")
             
             with get_connection() as conn:
-                conn.row_factory = dict_row
-                cursor = conn.cursor()
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 
                 cursor.execute("""
                     SELECT id, supplier_name, supplier_email, spec, price, currency,
@@ -200,7 +198,7 @@ class OfferManager:
                 logger.info(f"Retrieved {len(offers)} offers from supplier: {supplier_email}")
                 return offers
                 
-        except psycopg.Error as e:
+        except psycopg2.Error as e:
             logger.error(f"Database error retrieving supplier offers: {e}")
             raise OfferError(f"Failed to retrieve supplier offers: {e}")
         except Exception as e:
@@ -226,8 +224,7 @@ class OfferManager:
                 raise OfferError("Offer ID must be a positive integer")
             
             with get_connection() as conn:
-                conn.row_factory = dict_row
-                cursor = conn.cursor()
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 
                 cursor.execute("""
                     SELECT id, supplier_name, supplier_email, spec, price, currency,
@@ -245,7 +242,7 @@ class OfferManager:
                 
                 return offer
                 
-        except psycopg.Error as e:
+        except psycopg2.Error as e:
             logger.error(f"Database error retrieving offer {offer_id}: {e}")
             raise OfferError(f"Failed to retrieve offer: {e}")
         except Exception as e:
@@ -297,7 +294,7 @@ class OfferManager:
                     logger.warning(f"Offer {offer_id} not found for status update")
                     return False
                 
-        except psycopg.Error as e:
+        except psycopg2.Error as e:
             logger.error(f"Database error updating offer status: {e}")
             raise OfferError(f"Failed to update offer status: {e}")
         except Exception as e:
@@ -317,8 +314,7 @@ class OfferManager:
         """
         try:
             with get_connection() as conn:
-                conn.row_factory = dict_row
-                cursor = conn.cursor()
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 
                 cursor.execute("""
                     SELECT 
@@ -344,7 +340,7 @@ class OfferManager:
                 logger.info("Retrieved offer statistics")
                 return stats or {}
                 
-        except psycopg.Error as e:
+        except psycopg2.Error as e:
             logger.error(f"Database error retrieving statistics: {e}")
             raise OfferError(f"Failed to retrieve statistics: {e}")
         except Exception as e:
@@ -384,8 +380,7 @@ def get_offers(spec: str, limit: int = 3) -> list[dict]:
             return []
         
         with get_connection() as conn:
-            conn.row_factory = dict_row
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             
             cursor.execute("""
                 SELECT id, supplier_name, supplier_email, spec, price, currency,

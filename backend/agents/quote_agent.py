@@ -8,14 +8,14 @@ from typing import List, Dict, Any, Optional
 from contextlib import contextmanager
 import anyio
 import imapclient
-import psycopg
+import psycopg2
 import re
 from decimal import Decimal
 
 from backend.suppliers import find_suppliers, SupplierSearchError
 from backend.suppliers.serp import find_suppliers_async
-from backend.email.outgoing import send_rfq, EmailSendError
-from backend.email.parser import extract_offer
+from backend.email_templates.outgoing import send_rfq, EmailSendError
+from backend.email_templates.parser import extract_offer
 from backend.app.offers import OfferManager
 from pricing import scrape_catalogs, get_mock_results
 
@@ -40,7 +40,7 @@ def get_imap_config() -> Dict[str, str]:
 def get_db_connection():
     """Get database connection using existing configuration."""
     from backend.app.db import DB_DSN
-    return psycopg.connect(DB_DSN)
+    return psycopg2.connect(DB_DSN)
 
 
 async def store_offer(offer_data: Dict[str, Any], supplier_info: Dict[str, str], spec: str) -> Optional[int]:
@@ -486,7 +486,7 @@ class QuoteAgent:
             
     def _prepare_counter_email(self, **kwargs) -> str:
         """Prepare counter offer email content"""
-        with open('email/counter_offer.txt', 'r') as f:
+        with open('backend/email_templates/counter_offer.txt', 'r') as f:
             template = f.read()
             
         # Replace placeholders

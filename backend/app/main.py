@@ -1,13 +1,21 @@
+"""Main FastAPI application for the agent swarm backend."""
+
+# Environment variables are set in the shell session
+# from dotenv import load_dotenv
+# load_dotenv()
+
 import json
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
-from backend.app.models import EmailPayload
-from backend.app.db import add_doc, init_db
-from backend.app.routes import quotes_router
-from backend.app.routes_clarify import rfq_router
+from .models import EmailPayload
+from .db import add_doc, init_db
+from .routes import quotes_router
+from .routes_clarify import rfq_router
+from .routes_notify import router as notify_router
+from .routes_intelligent_rfq import router as intelligent_rfq_router
 
 logging.basicConfig(level=logging.INFO)
 
@@ -41,6 +49,12 @@ app.include_router(quotes_router)
 
 # Include the RFQ clarification router
 app.include_router(rfq_router)
+
+# Include the notification router
+app.include_router(notify_router)
+
+# Include the intelligent RFQ router
+app.include_router(intelligent_rfq_router)
 
 
 @app.post("/incoming-email", status_code=status.HTTP_200_OK)

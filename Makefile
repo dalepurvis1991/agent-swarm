@@ -49,7 +49,7 @@ docker-logs:	## Show logs from all services
 	docker-compose logs -f
 
 db-migrate:	## Run database migrations
-	poetry run python -c "import psycopg; from backend.app.db import DB_DSN; conn = psycopg.connect(DB_DSN); [conn.execute(open(f'migrations/{f}').read()) for f in ['001_initial.sql', '002_offers.sql']]; conn.commit(); print('Migrations completed')"
+	poetry run python -c "import psycopg; from backend.app.db import DB_DSN; conn = psycopg.connect(DB_DSN); [conn.execute(open(f'migrations/{f}').read()) for f in ['001_init.sql', '002_offers.sql', '003_rfq_sessions.sql', '004_offer_status.sql']]; conn.commit(); print('Migrations completed')"
 
 run-quote:	## Run quote tool example
 	poetry run python tools/run_quote.py "eco-friendly tote bags" --k 3 --poll-duration 30
@@ -69,6 +69,8 @@ dev-setup:	## Set up development environment
 	@echo "✅ Development environment ready!"
 	@echo "   - Database: postgresql://dev:dev@localhost:5432/email_processing"
 	@echo "   - MailHog UI: http://localhost:8025"
+	@echo "   - Backend API: http://localhost:8000"
+	@echo "   - Frontend: http://localhost:3000"
 	@echo "   - Run tests: make test"
 	@echo "   - Run quote tool: make run-quote"
 

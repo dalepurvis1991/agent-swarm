@@ -29,7 +29,7 @@ RUN poetry install --no-root && rm -rf $POETRY_CACHE_DIR
 COPY . .
 
 # Install the application
-RUN poetry install --no-dev
+RUN poetry install --only=main
 
 # Create non-root user
 RUN adduser --disabled-password --gecos '' appuser && chown -R appuser:appuser /app

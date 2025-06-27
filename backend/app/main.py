@@ -7,6 +7,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import psycopg
 from backend.app.db import DB_DSN
+from pydantic import BaseModel          # ← ADD THIS
+
 
 # Configure logging
 logging.basicConfig(
@@ -127,3 +129,29 @@ async def get_offer(offer_id: int):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+if __name__ == "__main__":
+
+# ─────────────────────────────  NEW CODE  ────────────────────────────────
+class RFQRequest(BaseModel):
+    """Payload sent by the React front-end."""
+    query: str
+
+
+@app.post("/intelligent-rfq/process", status_code=201)
+async def process_rfq(req: RFQRequest):
+    """
+    Endpoint the front-end calls when the user clicks *Start*.
+    It takes the RFQ text, creates an offer, and returns the offer JSON.
+    """
+    try:
+        from backend.app.offers import OfferManager
+
+        # Replace this with the helper you actually have, if its name differs
+        offer = await OfferManager.create_offer_from_query(req.query)
+
+        return offer
+    except Exception as e:
+        logger.error(f"RFQ processing failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process RFQ")
+# ──────────────────────────────────────────────────────────────────────────

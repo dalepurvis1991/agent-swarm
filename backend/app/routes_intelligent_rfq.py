@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, Dict, List
 import os
-from ..agents.intelligent_rfq_agent import IntelligentRFQAgent
+from backend.agents.intelligent_rfq_agent import IntelligentRFQAgent
 
 router = APIRouter()
 

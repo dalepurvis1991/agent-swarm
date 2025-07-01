@@ -24,6 +24,8 @@ services:
       - SMTP_PORT=1025
       - IMAP_HOST=mailhog
       - IMAP_PORT=1025
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SERPAPI_KEY=${SERPAPI_KEY}
     ports:
       - "8000:8000"
     depends_on:

@@ -42,5 +42,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:8000/health')" || exit 1
 
+# Make startup script executable
+RUN chmod +x /app/backend/startup.sh
+
 # Command to run the application
-CMD ["poetry", "run", "python", "-m", "backend.app.main"]
+CMD ["/bin/bash", "/app/backend/startup.sh"]
